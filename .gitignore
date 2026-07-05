@@ -1,0 +1,7 @@
+# bats
+test/bats/.tmp.*
+*.log
+
+# editor
+.*.swp
+.DS_Store
