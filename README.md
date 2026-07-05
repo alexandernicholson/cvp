@@ -2,7 +2,7 @@
 
 A [cvm](https://github.com/alexandernicholson/cvm) plugin that manages named
 **profiles** of environment variables — a custom inference gateway's
-`ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN`, and
+`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and
 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, plus any others — and applies the active
 one to every `claude` invocation, **per-directory or globally, without ever
 losing saved keys or URLs**.
@@ -63,7 +63,7 @@ cvm profile help
 # 1. Define a profile (interactive prompts for the known gateway vars)
 cvm profile add my-gateway
 #   ANTHROPIC_BASE_URL: https://my-gateway.example.com
-#   CLAUDE_CODE_OAUTH_TOKEN: sk-...
+#   ANTHROPIC_AUTH_TOKEN: sk-...
 #   CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: 1
 
 # 2. Activate it globally
@@ -112,9 +112,18 @@ Profile files are simple `.env`:
 ```bash
 # Profile: my-gateway
 ANTHROPIC_BASE_URL='https://my-gateway.example.com'
-CLAUDE_CODE_OAUTH_TOKEN='sk-...'
+ANTHROPIC_AUTH_TOKEN='sk-...'
 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS='1'
 ```
+
+> **Why `ANTHROPIC_AUTH_TOKEN` and not `CLAUDE_CODE_OAUTH_TOKEN`?**
+> `ANTHROPIC_AUTH_TOKEN` sets the raw `Authorization: Bearer <value>` header and
+> takes precedence over your logged-in claude.ai session in **both** interactive
+> and `-p` mode. `CLAUDE_CODE_OAUTH_TOKEN` only overrides keychain-stored
+> credentials and is ignored in interactive mode when a session is active — so
+> Claude Code would keep using your logged-in Anthropic credentials instead of
+> the gateway key. You can still add `CLAUDE_CODE_OAUTH_TOKEN` (or any other
+> var) via `cvm profile edit` if your gateway specifically needs OAuth semantics.
 
 ## Profile Resolution
 

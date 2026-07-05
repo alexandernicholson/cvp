@@ -107,7 +107,7 @@ EOF
   assert_success
   assert_contains "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
   assert_not_contains "ANTHROPIC_BASE_URL"
-  assert_not_contains "CLAUDE_CODE_OAUTH_TOKEN"
+  assert_not_contains "ANTHROPIC_AUTH_TOKEN"
 }
 
 @test "init activates default only when no profile is active" {

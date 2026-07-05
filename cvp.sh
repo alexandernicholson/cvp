@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-CVP_VERSION="0.1.1"
+CVP_VERSION="0.1.2"
 
 CVP_DIR="${CVM_DIR:-$HOME/.cvm}"
 CVP_PROFILES="$CVP_DIR/profiles"
@@ -23,9 +23,14 @@ CVP_ENV_D="$CVP_DIR/env.d"
 CVP_RESOLVER="$CVP_ENV_D/cvp.sh"
 
 # Vars cvp knows about (used as prompts in `add`). Any KEY=VALUE line is allowed.
+# ANTHROPIC_AUTH_TOKEN is preferred over CLAUDE_CODE_OAUTH_TOKEN: it sets the
+# raw `Authorization: Bearer <value>` header and takes precedence over your
+# logged-in claude.ai session in BOTH interactive and -p mode (whereas
+# CLAUDE_CODE_OAUTH_TOKEN only overrides keychain creds and is ignored in
+# interactive mode when a session is active).
 CVP_KNOWN_VARS=(
   ANTHROPIC_BASE_URL
-  CLAUDE_CODE_OAUTH_TOKEN
+  ANTHROPIC_AUTH_TOKEN
   CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
 )
 # Vars whose values are masked in `show` (name contains one of these tokens).
