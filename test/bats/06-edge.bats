@@ -38,6 +38,14 @@ load "../helpers/common"
   assert_contains "export ANTHROPIC_BASE_URL='https://gw.example.com'"
 }
 
+@test "env parses single-quoted values and strips the quotes" {
+  write_profile work "ANTHROPIC_BASE_URL='https://gw.example.com'"
+  set_global_profile work
+  run bash "$CVP_SCRIPT" env
+  assert_success
+  assert_contains "export ANTHROPIC_BASE_URL='https://gw.example.com'"
+}
+
 @test "env ignores blank lines and comments in profile files" {
   mkdir -p "$CVM_DIR/profiles"
   cat > "$CVM_DIR/profiles/work.env" <<'EOF'

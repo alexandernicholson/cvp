@@ -114,10 +114,11 @@ _cvp_parse_env() {
     [[ "$line" == *=* ]] || continue
     key="${line%%=*}"
     val="${line#*=}"
-    case "$val" in
-      \"*\") val="${val#\"}"; val="${val%\"}" ;;
-      \'*\") val="${val#\'}"; val="${val%\'}" ;;
-    esac
+    # strip one pair of surrounding matching quotes (single or double)
+    local _q="${val:0:1}"
+    if [[ ( "$_q" == '"' || "$_q" == "'" ) && ${#val} -ge 2 && "${val: -1}" == "$_q" ]]; then
+      val="${val#?}"; val="${val%?}"
+    fi
     printf '%s=%s\0' "$key" "$val"
   done < "$file"
 }
@@ -158,14 +159,14 @@ while IFS= read -r _cvp_line || [[ -n "$_cvp_line" ]]; do
   [[ -z "$_cvp_line" || "$_cvp_line" == \#* || "$_cvp_line" != *=* ]] && continue
   _cvp_k="${_cvp_line%%=*}"
   _cvp_v="${_cvp_line#*=}"
-  case "$_cvp_v" in
-    \"*\") _cvp_v="${_cvp_v#\"}"; _cvp_v="${_cvp_v%\"}" ;;
-    \'*\") _cvp_v="${_cvp_v#\'}"; _cvp_v="${_cvp_v%\'}" ;;
-  esac
+  _cvp_q="${_cvp_v:0:1}"
+  if [[ ( "$_cvp_q" == '"' || "$_cvp_q" == "'" ) && ${#_cvp_v} -ge 2 && "${_cvp_v: -1}" == "$_cvp_q" ]]; then
+    _cvp_v="${_cvp_v#?}"; _cvp_v="${_cvp_v%?}"
+  fi
   export "$_cvp_k=$_cvp_v"
 done < "$_cvp_file"
 unset -f _cvp_resolve_profile 2>/dev/null
-unset _cvp_dir _cvp_name _cvp_file _cvp_k _cvp_v _cvp_line 2>/dev/null
+unset _cvp_dir _cvp_name _cvp_file _cvp_k _cvp_v _cvp_q _cvp_line 2>/dev/null
 RESOLVER
 }
 
