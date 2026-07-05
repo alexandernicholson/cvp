@@ -9,6 +9,12 @@ setup() {
   CVM_DIR=$(mktemp -d)
   mkdir -p "$CVM_DIR"
 
+  # Isolate ~/.claude/settings.json so tests never touch the real one.
+  export CVP_CLAUDE_DIR
+  CVP_CLAUDE_DIR="$CVM_DIR/claude"
+  mkdir -p "$CVP_CLAUDE_DIR"
+  unset CVP_NO_SETTINGS_SYNC 2>/dev/null || true
+
   # Working directory per test (prevents leaking .claude-profile files)
   export TEST_WORKDIR
   TEST_WORKDIR=$(mktemp -d)

@@ -156,7 +156,32 @@ CVM_PROFILE=prod-gateway claude
 ├── active-profile            ← global alias: just the name, e.g. "my-gateway"
 └── env.d/
     └── cvp.sh                ← resolver sourced by cvm's claude wrapper
+~/.claude/
+└── settings.json             ← `env` block cvp merges the GLOBAL profile into
+                                (so teammates — separate claude instances that
+                                bypass the shim — still get the gateway/keys)
 ```
+
+cvp uses **two injection paths** so both the lead and teammates get the profile:
+
+1. **`env.d` shim** (`~/.cvm/env.d/cvp.sh`, sourced by cvm's `claude` wrapper):
+   applies the **resolved** profile (`$CVM_PROFILE` → `.claude-profile` walk-up →
+   global alias) to the **lead** at runtime — this is what makes per-directory
+   profiles work with no shell reload.
+2. **`~/.claude/settings.json` `env` block**: cvp merges the **global** profile's
+   vars here. Claude Code reads this at startup *"no matter how `claude` was
+   launched"*, so **teammates** (separate Claude Code instances the lead spawns,
+   which bypass the shim) still pick up `ANTHROPIC_BASE_URL` /
+   `ANTHROPIC_AUTH_TOKEN` / flags. Only the `env` sub-object is touched; all
+   other settings (`model`, `permissions`, `statusLine`, …) are preserved, and a
+   one-time `settings.json.cvp-backup` is kept. cvp tracks the var names it owns
+   (in `~/.cvm/profiles/.settings-managed`) so switching profiles replaces its
+   own vars without clobbering user-added `env` entries.
+
+> **Per-directory caveat for teammates**: the `env.d` shim resolves per-dir for
+> the lead, but teammates read the **global** `settings.json` env. So a
+> per-directory profile applies to the lead only; teammates use the global
+> profile. Set `CVP_NO_SETTINGS_SYNC=1` to disable settings sync entirely.
 
 1. `cvm profile use <name>` writes the name to `~/.cvm/active-profile` and
    (re)installs the `env.d/cvp.sh` resolver. **It never touches profile data.**

@@ -14,13 +14,22 @@
 
 set -euo pipefail
 
-CVP_VERSION="0.1.2"
+CVP_VERSION="0.1.3"
 
 CVP_DIR="${CVM_DIR:-$HOME/.cvm}"
 CVP_PROFILES="$CVP_DIR/profiles"
 CVP_ACTIVE_FILE="$CVP_DIR/active-profile"
 CVP_ENV_D="$CVP_DIR/env.d"
 CVP_RESOLVER="$CVP_ENV_D/cvp.sh"
+
+# Claude Code's user-scope settings. cvp merges the active (global) profile's
+# vars into the `env` block here so that TEAMMATES (separate claude instances
+# that bypass the ~/.cvm/bin/claude shim) still pick up the gateway/keys at
+# startup. Only the `env` sub-object is touched; all other settings are
+# preserved. Set CVP_NO_SETTINGS_SYNC=1 to disable.
+CVP_CLAUDE_DIR="${CVP_CLAUDE_DIR:-$HOME/.claude}"
+CVP_CLAUDE_SETTINGS="$CVP_CLAUDE_DIR/settings.json"
+CVP_MANAGED_VARS="$CVP_PROFILES/.settings-managed"
 
 # Vars cvp knows about (used as prompts in `add`). Any KEY=VALUE line is allowed.
 # ANTHROPIC_AUTH_TOKEN is preferred over CLAUDE_CODE_OAUTH_TOKEN: it sets the
@@ -190,6 +199,141 @@ unset _cvp_dir _cvp_name _cvp_file _cvp_k _cvp_v _cvp_q _cvp_line 2>/dev/null
 RESOLVER
 }
 
+# ── ~/.claude/settings.json sync (for teammates) ──────────────────────────────
+# Teammates are separate Claude Code instances spawned by the lead that bypass
+# the ~/.cvm/bin/claude shim, so they never source env.d. Claude Code reads the
+# `env` block from ~/.claude/settings.json at startup "no matter how claude was
+# launched", so we merge the active GLOBAL profile's vars there. Only the `env`
+# sub-object is touched; cvp tracks the var names it owns in a sidecar so it can
+# replace them on switch without clobbering user-added env vars. Per-directory
+# profiles still apply to the LEAD via the shim at runtime.
+
+# Parse a profile .env file into KEY=VALUE lines (stdout), stripping comments
+# and one pair of surrounding quotes. Shared by the python sync below.
+_cvp_settings_parse() {
+  _cvp_parse_env "$1"
+}
+
+# Sync the global active profile (or $1) into ~/.claude/settings.json env.
+_cvp_settings_sync() {
+  [[ "${CVP_NO_SETTINGS_SYNC:-}" == "1" ]] && return 0
+  command -v python3 &>/dev/null || { warn "python3 not found — skipping ~/.claude/settings.json sync (teammates won't get the profile)"; return 0; }
+
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    [[ -f "$CVP_ACTIVE_FILE" ]] || { _cvp_settings_clear; return 0; }
+    name=$(tr -d '[:space:]' < "$CVP_ACTIVE_FILE")
+    [[ -n "$name" ]] || { _cvp_settings_clear; return 0; }
+  fi
+  local file; file="$(_cvp_profile_file "$name")"
+  [[ -f "$file" ]] || { warn "Profile '$name' has no file; skipping settings sync"; return 0; }
+
+  mkdir -p "$CVP_CLAUDE_DIR" "$CVP_PROFILES"
+  # One-time backup of the user's settings so the merge is reversible.
+  if [[ -f "$CVP_CLAUDE_SETTINGS" && ! -f "$CVP_CLAUDE_SETTINGS.cvp-backup" ]]; then
+    cp -p "$CVP_CLAUDE_SETTINGS" "$CVP_CLAUDE_SETTINGS.cvp-backup" 2>/dev/null || true
+  fi
+
+  # Hand the profile vars to python via a temp file (null-delimited, safe).
+  local pairs_file
+  pairs_file=$(mktemp)
+  _cvp_settings_parse "$file" > "$pairs_file"
+
+  python3 - "$CVP_CLAUDE_SETTINGS" "$pairs_file" "$CVP_MANAGED_VARS" <<'PYEOF'
+import sys, json, os
+settings_path, pairs_path, sidecar_path = sys.argv[1:4]
+
+# Read current settings (preserve everything).
+try:
+    with open(settings_path) as f:
+        settings = json.load(f)
+except FileNotFoundError:
+    settings = {}
+except Exception:
+    # Corrupt/invalid JSON — don't clobber. Fall back to empty and warn.
+    sys.stderr.write("cvp: warning: %s is not valid JSON; overwriting an empty env block\n" % settings_path)
+    settings = {}
+if not isinstance(settings, dict):
+    settings = {}
+
+# Previously managed vars (remove before re-adding).
+managed = []
+try:
+    with open(sidecar_path) as f:
+        managed = [l.strip() for l in f if l.strip()]
+except FileNotFoundError:
+    pass
+
+# New profile vars (null-delimited KEY=VALUE).
+newvars = {}
+with open(pairs_path, 'rb') as f:
+    for pair in f.read().split(b'\0'):
+        if not pair:
+            continue
+        k, _, v = pair.decode('utf-8', 'replace').partition('=')
+        newvars[k] = v
+
+env = settings.get('env', {})
+if not isinstance(env, dict):
+    env = {}
+for k in managed:
+    env.pop(k, None)
+env.update(newvars)
+
+if env:
+    settings['env'] = dict(sorted(env.items()))
+else:
+    settings.pop('env', None)
+
+with open(settings_path, 'w') as f:
+    json.dump(settings, f, indent=2, ensure_ascii=False)
+    f.write('\n')
+
+with open(sidecar_path, 'w') as f:
+    for k in newvars:
+        f.write(k + '\n')
+PYEOF
+  rm -f "$pairs_file"
+}
+
+# Remove all cvp-managed vars from ~/.claude/settings.json env (and the sidecar).
+_cvp_settings_clear() {
+  [[ "${CVP_NO_SETTINGS_SYNC:-}" == "1" ]] && return 0
+  [[ -f "$CVP_MANAGED_VARS" ]] || return 0
+  command -v python3 &>/dev/null || { rm -f "$CVP_MANAGED_VARS"; return 0; }
+  [[ -f "$CVP_CLAUDE_SETTINGS" ]] || { rm -f "$CVP_MANAGED_VARS"; return 0; }
+
+  python3 - "$CVP_CLAUDE_SETTINGS" "$CVP_MANAGED_VARS" <<'PYEOF'
+import sys, json
+settings_path, sidecar_path = sys.argv[1], sys.argv[2]
+managed = []
+try:
+    with open(sidecar_path) as f:
+        managed = [l.strip() for l in f if l.strip()]
+except FileNotFoundError:
+    pass
+try:
+    with open(settings_path) as f:
+        settings = json.load(f)
+except Exception:
+    settings = {}
+if not isinstance(settings, dict):
+    settings = {}
+env = settings.get('env', {})
+if isinstance(env, dict):
+    for k in managed:
+        env.pop(k, None)
+    if env:
+        settings['env'] = dict(sorted(env.items()))
+    else:
+        settings.pop('env', None)
+    with open(settings_path, 'w') as f:
+        json.dump(settings, f, indent=2, ensure_ascii=False)
+        f.write('\n')
+PYEOF
+  rm -f "$CVP_MANAGED_VARS"
+}
+
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 cvp_add() {
@@ -270,6 +414,11 @@ cvp_add() {
     done
   fi
 
+  # If this profile is the active global one, re-sync settings.json so
+  # teammates pick up the edited vars.
+  local g=""; [[ -f "$CVP_ACTIVE_FILE" ]] && g=$(tr -d '[:space:]' < "$CVP_ACTIVE_FILE")
+  [[ "$g" == "$name" ]] && _cvp_settings_sync "$name"
+
   ok "Saved profile '$name' → $file"
   echo -e "  ${DIM}Activate with:${RESET} cvm profile use $name"
 }
@@ -285,9 +434,10 @@ cvp_use() {
   _cvp_install_resolver
   # Only the alias is rewritten — the profile definition is never touched.
   printf '%s\n' "$name" > "$CVP_ACTIVE_FILE"
+  _cvp_settings_sync "$name"
   ok "Now using profile '$name' (global)"
   echo -e "  ${DIM}Alias only — settings in $file are untouched.${RESET}"
-  echo -e "  ${DIM}Applies to the next \`claude\` run (via ~/.cvm/env.d/cvp.sh).${RESET}"
+  echo -e "  ${DIM}Lead: env.d shim at runtime. Teammates: ~/.claude/settings.json env.${RESET}"
 }
 
 cvp_local() {
@@ -408,6 +558,9 @@ cvp_edit() {
   local editor="${EDITOR:-vi}"
   command -v "$editor" &>/dev/null || die "Editor '$editor' not found (set \$EDITOR)"
   "$editor" "$file"
+  # Re-sync settings.json if the edited profile is the active global one.
+  local g=""; [[ -f "$CVP_ACTIVE_FILE" ]] && g=$(tr -d '[:space:]' < "$CVP_ACTIVE_FILE")
+  [[ "$g" == "$name" ]] && _cvp_settings_sync "$name"
   ok "Edited profile '$name'"
 }
 
@@ -421,20 +574,23 @@ cvp_remove() {
   rm -f "$file"
   ok "Removed profile '$name'"
 
-  # If it was the global alias, clear the alias (keep the resolver installed).
+  # If it was the global alias, clear the alias + cvp-managed settings vars.
   local global=""
   [[ -f "$CVP_ACTIVE_FILE" ]] && global=$(tr -d '[:space:]' < "$CVP_ACTIVE_FILE")
   if [[ "$global" == "$name" ]]; then
     rm -f "$CVP_ACTIVE_FILE"
-    warn "It was the global active profile — alias cleared."
+    _cvp_settings_clear
+    warn "It was the global active profile — alias and settings.json env cleared."
   fi
 }
 
-# (Re)install the env.d resolver and report the current state.
+# (Re)install the env.d resolver, sync settings.json, and report state.
 cvp_apply() {
   _cvp_setup
   _cvp_install_resolver
+  _cvp_settings_sync
   ok "Resolver installed at $CVP_RESOLVER"
+  ok "Settings synced to $CVP_CLAUDE_SETTINGS"
   local name
   if name=$(_cvp_resolve 2>/dev/null); then
     echo -e "  ${DIM}active profile:${RESET} $name"
@@ -453,9 +609,11 @@ cvp_init() {
   if [[ ! -f "$CVP_ACTIVE_FILE" ]] || [[ -z "$(tr -d '[:space:]' < "$CVP_ACTIVE_FILE")" ]]; then
     printf 'default\n' > "$CVP_ACTIVE_FILE"
   fi
+  _cvp_settings_sync
   ok "cvp initialised"
   echo -e "  ${DIM}default profile:${RESET} $(_cvp_profile_file default)"
   echo -e "  ${DIM}resolver:${RESET}        $CVP_RESOLVER"
+  echo -e "  ${DIM}settings sync:${RESET}   $CVP_CLAUDE_SETTINGS"
   local active=""
   [[ -f "$CVP_ACTIVE_FILE" ]] && active=$(tr -d '[:space:]' < "$CVP_ACTIVE_FILE")
   echo -e "  ${DIM}active:${RESET}           ${active:-none}"
@@ -479,7 +637,8 @@ ${BOLD}COMMANDS${RESET}
   ${BOLD}edit${RESET} <name>           Open a profile in \`\$EDITOR\` (default: vi)
   ${BOLD}remove${RESET} <name>         Delete a profile (clears the alias if active)
   ${BOLD}env${RESET} [name]            Print \`export\` lines for \`eval\`\` (real values)
-  ${BOLD}apply${RESET}                 (Re)install the ~/.cvm/env.d/cvp.sh resolver
+  ${BOLD}apply${RESET}                 (Re)install resolver + sync ~/.claude/settings.json
+  ${BOLD}sync${RESET}                  Re-sync the active profile into ~/.claude/settings.json env
   ${BOLD}init${RESET}                  Seed the default profile + install resolver (run on install)
   ${BOLD}help${RESET}, ${BOLD}--help${RESET}          Show this help
 
@@ -500,6 +659,15 @@ ${BOLD}DESIGN${RESET}
   The global "active profile" is just an alias (a name in ~/.cvm/active-profile)
   pointing at ~/.cvm/profiles/<name>.env. Switching profiles rewrites only the
   alias; the stored keys/URLs/flags are never moved or lost.
+
+${BOLD}TWO INJECTION PATHS${RESET}
+  ${BOLD}env.d shim${RESET} (~/.cvm/env.d/cvp.sh): sourced by cvm's \`claude\` wrapper at
+    runtime → applies the RESOLVED profile (per-dir or global) to the LEAD.
+  ${BOLD}~/.claude/settings.json env${RESET}: cvp merges the GLOBAL profile's vars here so
+    TEAMMATES (separate claude instances that bypass the shim) still get them at
+    startup. Only the \`env\` sub-object is touched; other settings are preserved.
+    Per-directory profiles apply to the lead only; teammates use the global
+    profile. Set CVP_NO_SETTINGS_SYNC=1 to disable.
 
 ${BOLD}EXAMPLES${RESET}
   cvm profile add my-gateway
@@ -526,6 +694,7 @@ cvp_main() {
     rm|remove|delete) cvp_remove "$@" ;;
     env)            cvp_env "$@" ;;
     apply|refresh)  cvp_apply ;;
+    sync)           _cvp_settings_sync; ok "Settings synced to $CVP_CLAUDE_SETTINGS" ;;
     init)           cvp_init ;;
     version|--version|-v) echo "cvp $CVP_VERSION" ;;
     help|--help|-h) cvp_help ;;

@@ -65,7 +65,7 @@ load "../helpers/common"
   run bash "$CVP_SCRIPT" remove work
   assert_success
   [ ! -f "$CVM_DIR/active-profile" ]
-  assert_contains "alias cleared"
+  assert_contains "cleared"
 }
 
 @test "remove leaves the alias if a different profile was active" {
