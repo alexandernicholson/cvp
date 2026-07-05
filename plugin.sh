@@ -8,7 +8,7 @@
 
 CVM_PLUGIN_NAME="cvp"
 CVM_PLUGIN_COMMAND="profile"
-CVM_PLUGIN_VERSION="0.1.0"
+CVM_PLUGIN_VERSION="0.1.1"
 CVM_PLUGIN_DESCRIPION="Claude Code profile manager — switch gateway/keys per-dir or globally"
 
 _CVP_PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

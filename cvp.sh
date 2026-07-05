@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-CVP_VERSION="0.1.0"
+CVP_VERSION="0.1.1"
 
 CVP_DIR="${CVM_DIR:-$HOME/.cvm}"
 CVP_PROFILES="$CVP_DIR/profiles"
