@@ -2,7 +2,7 @@
 
 A [cvm](https://github.com/alexandernicholson/cvm) plugin that manages named
 **profiles** of environment variables — a custom inference gateway's
-`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and
+`ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, and
 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, plus any others — and applies the active
 one to every `claude` invocation, **per-directory or globally, without ever
 losing saved keys or URLs**.
@@ -63,7 +63,7 @@ cvm profile help
 # 1. Define a profile (interactive prompts for the known gateway vars)
 cvm profile add my-gateway
 #   ANTHROPIC_BASE_URL: https://my-gateway.example.com
-#   ANTHROPIC_AUTH_TOKEN: sk-...
+#   ANTHROPIC_API_KEY: sk-...
 #   CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: 1
 
 # 2. Activate it globally
@@ -112,18 +112,20 @@ Profile files are simple `.env`:
 ```bash
 # Profile: my-gateway
 ANTHROPIC_BASE_URL='https://my-gateway.example.com'
-ANTHROPIC_AUTH_TOKEN='sk-...'
+ANTHROPIC_API_KEY='sk-...'
 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS='1'
 ```
 
-> **Why `ANTHROPIC_AUTH_TOKEN` and not `CLAUDE_CODE_OAUTH_TOKEN`?**
-> `ANTHROPIC_AUTH_TOKEN` sets the raw `Authorization: Bearer <value>` header and
-> takes precedence over your logged-in claude.ai session in **both** interactive
-> and `-p` mode. `CLAUDE_CODE_OAUTH_TOKEN` only overrides keychain-stored
-> credentials and is ignored in interactive mode when a session is active — so
-> Claude Code would keep using your logged-in Anthropic credentials instead of
-> the gateway key. You can still add `CLAUDE_CODE_OAUTH_TOKEN` (or any other
-> var) via `cvm profile edit` if your gateway specifically needs OAuth semantics.
+> **Why `ANTHROPIC_API_KEY` and not `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_AUTH_TOKEN`?**
+> `ANTHROPIC_API_KEY` is the only auth var that works in **both** the env.d shim
+> (real env var, for the lead) **and** `~/.claude/settings.json` `env` (for
+> teammates, which bypass the shim). Claude Code's docs say it "is used instead
+> of your subscription even if you are logged in." `CLAUDE_CODE_OAUTH_TOKEN` only
+> overrides keychain creds and is ignored when a session is active.
+> `ANTHROPIC_AUTH_TOKEN` (raw `Authorization: Bearer`) works as a real env var
+> but is **ignored** when set via `settings.json` `env` — so teammates wouldn't
+> get it. You can still add either manually via `cvm profile edit` if your
+> gateway specifically needs them (lead-only).
 
 ## Profile Resolution
 
@@ -172,7 +174,7 @@ cvp uses **two injection paths** so both the lead and teammates get the profile:
    vars here. Claude Code reads this at startup *"no matter how `claude` was
    launched"*, so **teammates** (separate Claude Code instances the lead spawns,
    which bypass the shim) still pick up `ANTHROPIC_BASE_URL` /
-   `ANTHROPIC_AUTH_TOKEN` / flags. Only the `env` sub-object is touched; all
+   `ANTHROPIC_API_KEY` / flags. Only the `env` sub-object is touched; all
    other settings (`model`, `permissions`, `statusLine`, …) are preserved, and a
    one-time `settings.json.cvp-backup` is kept. cvp tracks the var names it owns
    (in `~/.cvm/profiles/.settings-managed`) so switching profiles replaces its

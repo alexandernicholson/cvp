@@ -23,12 +23,12 @@ load "../helpers/common"
 @test "show displays the active profile with masked secrets" {
   write_profile work \
     "ANTHROPIC_BASE_URL=https://gw.example.com" \
-    "ANTHROPIC_AUTH_TOKEN=sk-secret-123"
+    "ANTHROPIC_API_KEY=sk-secret-123"
   set_global_profile work
   run bash "$CVP_SCRIPT" show
   assert_success
   assert_contains "https://gw.example.com"
-  assert_contains "ANTHROPIC_AUTH_TOKEN=***"
+  assert_contains "ANTHROPIC_API_KEY=***"
   assert_not_contains "sk-secret-123"
 }
 
@@ -80,12 +80,12 @@ load "../helpers/common"
 @test "env prints real export lines (no masking)" {
   write_profile work \
     "ANTHROPIC_BASE_URL=https://gw.example.com" \
-    "ANTHROPIC_AUTH_TOKEN=sk-real-123"
+    "ANTHROPIC_API_KEY=sk-real-123"
   set_global_profile work
   run bash "$CVP_SCRIPT" env
   assert_success
   assert_contains "export ANTHROPIC_BASE_URL='https://gw.example.com'"
-  assert_contains "export ANTHROPIC_AUTH_TOKEN='sk-real-123'"
+  assert_contains "export ANTHROPIC_API_KEY='sk-real-123'"
 }
 
 @test "env with no active profile prints nothing and succeeds" {

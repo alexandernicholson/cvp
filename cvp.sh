@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-CVP_VERSION="0.1.3"
+CVP_VERSION="0.1.4"
 
 CVP_DIR="${CVM_DIR:-$HOME/.cvm}"
 CVP_PROFILES="$CVP_DIR/profiles"
@@ -32,14 +32,15 @@ CVP_CLAUDE_SETTINGS="$CVP_CLAUDE_DIR/settings.json"
 CVP_MANAGED_VARS="$CVP_PROFILES/.settings-managed"
 
 # Vars cvp knows about (used as prompts in `add`). Any KEY=VALUE line is allowed.
-# ANTHROPIC_AUTH_TOKEN is preferred over CLAUDE_CODE_OAUTH_TOKEN: it sets the
-# raw `Authorization: Bearer <value>` header and takes precedence over your
-# logged-in claude.ai session in BOTH interactive and -p mode (whereas
-# CLAUDE_CODE_OAUTH_TOKEN only overrides keychain creds and is ignored in
-# interactive mode when a session is active).
+# ANTHROPIC_API_KEY is the recommended auth var: it sends an X-Api-Key header and
+# "is used instead of your subscription even if you are logged in" — and unlike
+# ANTHROPIC_API_KEY, it works in BOTH the env.d shim (real env var, for the
+# lead) AND ~/.claude/settings.json env (for teammates, which bypass the shim).
+# Gateways that require a Bearer header can still use ANTHROPIC_API_KEY (add
+# it manually via `cvm profile edit`), but it only works for the lead.
 CVP_KNOWN_VARS=(
   ANTHROPIC_BASE_URL
-  ANTHROPIC_AUTH_TOKEN
+  ANTHROPIC_API_KEY
   CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
 )
 # Vars whose values are masked in `show` (name contains one of these tokens).

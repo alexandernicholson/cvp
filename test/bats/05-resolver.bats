@@ -12,7 +12,7 @@ source_resolver_and_print() {
     cd "$1"
     source "$0/env.d/cvp.sh"
     printf "BASE=%s\nTOKEN=%s\nTEAMS=%s\n" \
-      "${ANTHROPIC_BASE_URL:-}" "${ANTHROPIC_AUTH_TOKEN:-}" "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}"
+      "${ANTHROPIC_BASE_URL:-}" "${ANTHROPIC_API_KEY:-}" "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}"
  ' "$CVM_DIR" "$cwd"
 }
 
@@ -26,7 +26,7 @@ source_resolver_and_print() {
 @test "resolver exports the global active profile's vars" {
   write_profile work \
     "ANTHROPIC_BASE_URL=https://gw.example.com" \
-    "ANTHROPIC_AUTH_TOKEN=sk-123" \
+    "ANTHROPIC_API_KEY=sk-123" \
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
   set_global_profile work
   bash "$CVP_SCRIPT" apply >/dev/null
@@ -114,13 +114,13 @@ source_resolver_and_print() {
 @test "resolver strips surrounding quotes from values" {
   write_profile work \
     "ANTHROPIC_BASE_URL='https://gw.example.com'" \
-    "ANTHROPIC_AUTH_TOKEN=\"sk-quoted\""
+    "ANTHROPIC_API_KEY=\"sk-quoted\""
   set_global_profile work
   bash "$CVP_SCRIPT" apply >/dev/null
 
   CVM_DIR="$CVM_DIR" run bash -c '
     source "$0/env.d/cvp.sh"
-    printf "BASE=%s|TOKEN=%s\n" "$ANTHROPIC_BASE_URL" "$ANTHROPIC_AUTH_TOKEN"
+    printf "BASE=%s|TOKEN=%s\n" "$ANTHROPIC_BASE_URL" "$ANTHROPIC_API_KEY"
   ' "$CVM_DIR"
   assert_success
   assert_contains "BASE=https://gw.example.com"

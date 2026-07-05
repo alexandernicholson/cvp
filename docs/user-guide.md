@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/alexandernicholson/cvp/main/install
 ```bash
 cvm profile add my-gateway
 #   ANTHROPIC_BASE_URL: https://my-gateway.example.com
-#   ANTHROPIC_AUTH_TOKEN: sk-...
+#   ANTHROPIC_API_KEY: sk-...
 #   CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: 1
 
 cvm profile use my-gateway
@@ -60,7 +60,7 @@ A profile is a plain `.env` file at `~/.cvm/profiles/<name>.env`:
 ```bash
 # Profile: my-gateway
 ANTHROPIC_BASE_URL='https://my-gateway.example.com'
-ANTHROPIC_AUTH_TOKEN='sk-...'
+ANTHROPIC_API_KEY='sk-...'
 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS='1'
 ```
 
@@ -71,7 +71,7 @@ cvm profile add my-gateway        # prompts for the known vars + any custom ones
 cvm profile edit my-gateway       # open in $EDITOR
 ```
 
-`add` prompts for `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and
+`add` prompts for `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, and
 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, then lets you add arbitrary custom
 `KEY=VALUE` pairs. Any `KEY=VALUE` line is allowed.
 

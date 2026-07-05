@@ -30,8 +30,8 @@ load "../helpers/common"
 }
 
 @test "switching profiles only rewrites the alias (settings untouched)" {
-  write_profile work "ANTHROPIC_BASE_URL=https://a.example.com" "ANTHROPIC_AUTH_TOKEN=sk-a"
-  write_profile prod "ANTHROPIC_BASE_URL=https://b.example.com" "ANTHROPIC_AUTH_TOKEN=sk-b"
+  write_profile work "ANTHROPIC_BASE_URL=https://a.example.com" "ANTHROPIC_API_KEY=sk-a"
+  write_profile prod "ANTHROPIC_BASE_URL=https://b.example.com" "ANTHROPIC_API_KEY=sk-b"
 
   bash "$CVP_SCRIPT" use work >/dev/null
   local before; before=$(cat "$CVM_DIR/profiles/work.env")
@@ -44,11 +44,11 @@ load "../helpers/common"
 }
 
 @test "switching back restores the alias without data loss" {
-  write_profile work "ANTHROPIC_AUTH_TOKEN=sk-a"
+  write_profile work "ANTHROPIC_API_KEY=sk-a"
   bash "$CVP_SCRIPT" use work >/dev/null
   bash "$CVP_SCRIPT" use prod >/dev/null || true
   # prod doesn't exist, so create it and switch
-  write_profile prod "ANTHROPIC_AUTH_TOKEN=sk-b"
+  write_profile prod "ANTHROPIC_API_KEY=sk-b"
   bash "$CVP_SCRIPT" use prod >/dev/null
   bash "$CVP_SCRIPT" use work >/dev/null
   [ "$(cat "$CVM_DIR/active-profile")" = "work" ]

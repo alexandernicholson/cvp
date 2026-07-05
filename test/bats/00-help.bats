@@ -42,6 +42,6 @@ load "../helpers/common"
   run bash "$CVP_SCRIPT" help
   assert_success
   assert_contains "ANTHROPIC_BASE_URL"
-  assert_contains "ANTHROPIC_AUTH_TOKEN"
+  assert_contains "ANTHROPIC_API_KEY"
   assert_contains "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"
 }

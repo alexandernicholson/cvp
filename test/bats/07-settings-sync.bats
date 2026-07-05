@@ -9,12 +9,12 @@ settings_env() {
 }
 
 @test "use writes the profile vars into settings.json env" {
-  write_profile work "ANTHROPIC_BASE_URL=https://gw.example.com" "ANTHROPIC_AUTH_TOKEN=sk-1"
+  write_profile work "ANTHROPIC_BASE_URL=https://gw.example.com" "ANTHROPIC_API_KEY=sk-1"
   run bash "$CVP_SCRIPT" use work
   assert_success
   env_json=$(settings_env)
   echo "$env_json" | grep -q 'ANTHROPIC_BASE_URL.*gw.example.com'
-  echo "$env_json" | grep -q 'ANTHROPIC_AUTH_TOKEN.*sk-1'
+  echo "$env_json" | grep -q 'ANTHROPIC_API_KEY.*sk-1'
 }
 
 @test "use preserves non-env keys in settings.json" {
@@ -31,7 +31,7 @@ settings_env() {
 
 @test "switching profiles replaces managed vars without losing user env vars" {
   printf '{\n  "env": {"MY_USER_VAR": "keep"}\n}\n' > "$CVP_CLAUDE_DIR/settings.json"
-  write_profile a "ANTHROPIC_BASE_URL=https://a.example.com" "ANTHROPIC_AUTH_TOKEN=sk-a"
+  write_profile a "ANTHROPIC_BASE_URL=https://a.example.com" "ANTHROPIC_API_KEY=sk-a"
   write_profile b "ANTHROPIC_BASE_URL=https://b.example.com"
   bash "$CVP_SCRIPT" use a >/dev/null
   settings_env | grep -q 'a.example.com'
