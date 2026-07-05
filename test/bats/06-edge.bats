@@ -91,3 +91,52 @@ EOF
   [ -f "$alt/env.d/cvp.sh" ]
   rm -rf "$alt"
 }
+
+# ── init / default profile seeding ────────────────────────────────────────────
+
+@test "init seeds the default profile" {
+  run bash "$CVP_SCRIPT" init
+  assert_success
+  [ -f "$CVM_DIR/profiles/default.env" ]
+  assert_contains "cvp initialised"
+}
+
+@test "default profile uses official endpoints (no base URL / token)" {
+  bash "$CVP_SCRIPT" init >/dev/null
+  run bash "$CVP_SCRIPT" show default
+  assert_success
+  assert_contains "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
+  assert_not_contains "ANTHROPIC_BASE_URL"
+  assert_not_contains "CLAUDE_CODE_OAUTH_TOKEN"
+}
+
+@test "init activates default only when no profile is active" {
+  bash "$CVP_SCRIPT" init >/dev/null
+  [ "$(cat "$CVM_DIR/active-profile")" = "default" ]
+}
+
+@test "init does not overwrite an existing active profile" {
+  write_profile pantheon "ANTHROPIC_BASE_URL=https://gw.example.com"
+  set_global_profile pantheon
+  bash "$CVP_SCRIPT" init >/dev/null
+  [ "$(cat "$CVM_DIR/active-profile")" = "pantheon" ]
+}
+
+@test "seed does not overwrite an existing default.env" {
+  mkdir -p "$CVM_DIR/profiles"
+  printf '# custom default\nCUSTOM=keep\n' > "$CVM_DIR/profiles/default.env"
+  bash "$CVP_SCRIPT" init >/dev/null
+  [ "$(cat "$CVM_DIR/profiles/default.env")" = $'# custom default\nCUSTOM=keep' ]
+}
+
+@test "apply also seeds the default profile" {
+  run bash "$CVP_SCRIPT" apply
+  assert_success
+  [ -f "$CVM_DIR/profiles/default.env" ]
+}
+
+@test "plugin.sh defines cvm_plugin_init" {
+  local plugin_sh; plugin_sh="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)/plugin.sh"
+  bash -c 'source "$1" 2>/dev/null && declare -F cvm_plugin_init >/dev/null 2>&1' _ "$plugin_sh"
+  [ $? -eq 0 ]
+}

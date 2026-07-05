@@ -18,3 +18,12 @@ cvm_plugin_main() {
   source "$_CVP_PLUGIN_DIR/cvp.sh"
   cvp_main "$@"
 }
+
+# Post-install/update hook (called by cvm's plugin manager). Seeds the built-in
+# `default` profile (official Claude Code), installs the env.d resolver, and
+# activates `default` only if no profile is active yet.
+cvm_plugin_init() {
+  # shellcheck disable=SC1091
+  source "$_CVP_PLUGIN_DIR/cvp.sh"
+  cvp_init
+}
