@@ -15,6 +15,13 @@ setup() {
   mkdir -p "$CVP_CLAUDE_DIR"
   unset CVP_NO_SETTINGS_SYNC 2>/dev/null || true
 
+  # The invoking shell may already carry cvp's shim exports (or a real
+  # gateway config) — drop every ANTHROPIC_* var so tests see a clean env.
+  local _v
+  for _v in $(compgen -e ANTHROPIC_ || true); do
+    unset "$_v"
+  done
+
   # Working directory per test (prevents leaking .claude-profile files)
   export TEST_WORKDIR
   TEST_WORKDIR=$(mktemp -d)
