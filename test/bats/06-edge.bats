@@ -30,6 +30,18 @@ load "../helpers/common"
   assert_contains "export ANTHROPIC_BASE_URL='https://gw.example.com'"
 }
 
+@test "env expands literal \\n in values to real newlines" {
+  write_profile work 'ANTHROPIC_CUSTOM_HEADERS="x-first: 1\nx-second: 2"'
+  set_global_profile work
+  run bash "$CVP_SCRIPT" env
+  assert_success
+  # the two headers must land on separate lines inside the value
+  # (bash substring match — grep -F would match line-by-line)
+  [[ "$output" == *"x-first: 1
+x-second: 2"* ]]
+  assert_not_contains 'x-first: 1\nx-second'
+}
+
 @test "env parses double-quoted values and strips the quotes" {
   write_profile work 'ANTHROPIC_BASE_URL="https://gw.example.com"'
   set_global_profile work

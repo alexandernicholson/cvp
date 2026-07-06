@@ -134,6 +134,8 @@ _cvp_parse_env() {
     if [[ ( "$_q" == '"' || "$_q" == "'" ) && ${#val} -ge 2 && "${val: -1}" == "$_q" ]]; then
       val="${val#?}"; val="${val%?}"
     fi
+    local _nl=$'\n'
+    val="${val//\\n/${_nl}}"
     printf '%s=%s\0' "$key" "$val"
   done < "$file"
 }
@@ -193,6 +195,8 @@ while IFS= read -r _cvp_line || [[ -n "$_cvp_line" ]]; do
   if [[ ( "$_cvp_q" == '"' || "$_cvp_q" == "'" ) && ${#_cvp_v} -ge 2 && "${_cvp_v: -1}" == "$_cvp_q" ]]; then
     _cvp_v="${_cvp_v#?}"; _cvp_v="${_cvp_v%?}"
   fi
+  _cvp_nl=$'\n'
+  _cvp_v="${_cvp_v//\\n/${_cvp_nl}}"
   export "$_cvp_k=$_cvp_v"
 done < "$_cvp_file"
 unset -f _cvp_resolve_profile 2>/dev/null
