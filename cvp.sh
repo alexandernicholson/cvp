@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-CVP_VERSION="0.1.4"
+CVP_VERSION="0.1.5"
 
 CVP_DIR="${CVM_DIR:-$HOME/.cvm}"
 CVP_PROFILES="$CVP_DIR/profiles"
@@ -78,15 +78,85 @@ _cvp_valid_name() {
 }
 
 # Single-quote-escape a value for safe embedding in `export KEY='value'`.
+# Each ' becomes the 4-char sequence '\'' (close-quote, escaped-quote, reopen).
+# We build it char-by-char instead of using `${s//\'/...}`: the escaping of
+# backslashes in a pattern-substitution *replacement* string changed between
+# bash 3.2 (macOS) and 4.3+, which corrupted values containing quotes on macOS.
+# ANSI-C quoting ($'\047\134\047\047' = ' \ ' ') is identical on every bash.
 _cvp_squote() {
-  local s="$1"
-  s="${s//\'/\'\\\'\'}"
-  printf '%s' "$s"
+  local s="$1" out="" c i n=${#1}
+  local rep=$'\047\134\047\047'
+  for (( i = 0; i < n; i++ )); do
+    c="${s:i:1}"
+    if [[ "$c" == "'" ]]; then
+      out="$out$rep"
+    else
+      out="$out$c"
+    fi
+  done
+  printf '%s' "$out"
 }
 
 # True if the var name looks secret-y.
 _cvp_is_secret() {
   [[ "$1" =~ $CVP_SECRET_RE ]]
+}
+
+# ── Ordered key/value store (bash 3.2 compatible) ──────────────────────────────
+# macOS ships bash 3.2, which has no associative arrays (`declare -A`). cvp_add
+# needs an insertion-ordered map, so we back it with two parallel indexed arrays
+# and small accessor functions. All loops iterate by index (never expanding an
+# empty `${arr[@]}`, which errors under `set -u` on bash < 4.4).
+_CVP_KV_KEYS=()
+_CVP_KV_VALS=()
+
+# Empty the store.
+_cvp_kv_reset() {
+  _CVP_KV_KEYS=()
+  _CVP_KV_VALS=()
+}
+
+# Print the index of key $1 (0-based) and return 0, or return 1 if absent.
+_cvp_kv_index() {
+  local i n=${#_CVP_KV_KEYS[@]}
+  for (( i = 0; i < n; i++ )); do
+    if [[ "${_CVP_KV_KEYS[$i]}" == "$1" ]]; then
+      printf '%s' "$i"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# True if key $1 exists in the store.
+_cvp_kv_has() {
+  _cvp_kv_index "$1" >/dev/null
+}
+
+# Print the value for key $1 (nothing if absent). Returns 1 if absent.
+_cvp_kv_get() {
+  local i
+  i=$(_cvp_kv_index "$1") || return 1
+  printf '%s' "${_CVP_KV_VALS[$i]}"
+}
+
+# Set key $1 to value $2 (overwrite in place, or append preserving order).
+_cvp_kv_set() {
+  local i
+  if i=$(_cvp_kv_index "$1"); then
+    _CVP_KV_VALS[$i]="$2"
+  else
+    _CVP_KV_KEYS+=("$1")
+    _CVP_KV_VALS+=("$2")
+  fi
+}
+
+# Print all keys, one per line, in insertion order.
+_cvp_kv_keys() {
+  local i n=${#_CVP_KV_KEYS[@]}
+  for (( i = 0; i < n; i++ )); do
+    printf '%s\n' "${_CVP_KV_KEYS[$i]}"
+  done
 }
 
 # Resolve the active profile name (alias) — does NOT read the profile contents.
@@ -356,66 +426,71 @@ cvp_add() {
   [[ $existed -eq 1 ]] && echo -e "  ${DIM}(existing values shown in [] — press Enter to keep)${RESET}"
   echo ""
 
-  # Read existing values into an associative array (bash 4+).
-  declare -A cur=()
+  # Read existing values into the ordered key/value store (bash 3.2 safe).
+  _cvp_kv_reset
   if [[ $existed -eq 1 ]]; then
     local pair
     while IFS= read -r -d '' pair; do
-      cur["${pair%%=*}"]="${pair#*=}"
+      _cvp_kv_set "${pair%%=*}" "${pair#*=}"
     done < <(_cvp_parse_env "$file")
   fi
 
   # Prompt for each known var.
+  local var def hint val
   for var in "${CVP_KNOWN_VARS[@]}"; do
-    local def="${cur[$var]:-}"
-    local hint=""
+    def=$(_cvp_kv_get "$var" || true)
+    hint=""
     [[ -n "$def" ]] && hint=" ${DIM}[${def}]${RESET}"
     if _cvp_is_secret "$var"; then
       printf '%s%s%s (secret, leave blank to skip/keep)%s: ' "$BOLD" "$var" "$hint" "$RESET"
     else
       printf '%s%s%s%s: ' "$BOLD" "$var" "$hint" "$RESET"
     fi
-    local val
     read -r val || val=""
     if [[ -n "$val" ]]; then
-      cur[$var]="$val"
+      _cvp_kv_set "$var" "$val"
     fi
   done
 
   # Prompt for any extra custom vars.
   echo ""
   echo -e "${DIM}Add custom variables (blank line to finish):${RESET}"
+  local k v
   while true; do
     printf 'VAR NAME (blank=done): '; read -r k || k=""
     [[ -z "$k" ]] && break
     [[ "$k" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { warn "'$k' is not a valid env var name (letters/digits/_), skipping"; continue; }
-    local def="${cur[$k]:-}"
-    local hint=""; [[ -n "$def" ]] && hint=" ${DIM}[${def}]${RESET}"
+    def=$(_cvp_kv_get "$k" || true)
+    hint=""; [[ -n "$def" ]] && hint=" ${DIM}[${def}]${RESET}"
     printf '  value for %s%s: ' "$k" "$hint"; read -r v || v=""
-    if [[ -n "$v" ]]; then cur[$k]="$v"; fi
+    if [[ -n "$v" ]]; then _cvp_kv_set "$k" "$v"; fi
   done
 
   # Write the file: known vars first (in declared order), then extras sorted.
   : > "$file"
   echo "# Profile: $name" >> "$file"
   echo "# Managed by cvp — edit with: cvm profile edit $name" >> "$file"
-  local written=()
+  local written=() w seen
   for var in "${CVP_KNOWN_VARS[@]}"; do
-    if [[ -n "${cur[$var]:-}" ]]; then
-      printf "%s='%s'\n" "$var" "$(_cvp_squote "${cur[$var]}")" >> "$file"
+    val=$(_cvp_kv_get "$var" || true)
+    if [[ -n "$val" ]]; then
+      printf "%s='%s'\n" "$var" "$(_cvp_squote "$val")" >> "$file"
       written+=("$var")
     fi
   done
-  # Extras (anything in cur() not already written), sorted for stability.
+  # Extras (anything in the store not already written), sorted for stability.
   local extras=()
-  for k in "${!cur[@]}"; do
-    local seen=0
-    for w in "${written[@]}"; do [[ "$k" == "$w" ]] && { seen=1; break; }; done
+  while IFS= read -r k; do
+    [[ -n "$k" ]] || continue
+    seen=0
+    if [[ ${#written[@]} -gt 0 ]]; then
+      for w in "${written[@]}"; do [[ "$k" == "$w" ]] && { seen=1; break; }; done
+    fi
     [[ $seen -eq 0 ]] && extras+=("$k")
-  done
+  done < <(_cvp_kv_keys)
   if [[ ${#extras[@]} -gt 0 ]]; then
     printf '%s\n' "${extras[@]}" | LC_ALL=C sort | while IFS= read -r k; do
-      printf "%s='%s'\n" "$k" "$(_cvp_squote "${cur[$k]}")" >> "$file"
+      printf "%s='%s'\n" "$k" "$(_cvp_squote "$(_cvp_kv_get "$k")")" >> "$file"
     done
   fi
 
@@ -707,5 +782,10 @@ cvp_main() {
   esac
 }
 
-# Allow running cvp.sh directly (outside the cvm plugin dispatch).
-[[ "${BASH_SOURCE[0]}" == "${0}" ]] && cvp_main "$@"
+# Allow running cvp.sh directly (outside the cvm plugin dispatch). Use an `if`
+# (not `[[ ]] && cvp_main`) so that sourcing this file returns 0 — a trailing
+# `&&` that evaluates false would return 1 and trip `set -e` in any caller that
+# sources cvp.sh (e.g. cvm's plugin loader).
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  cvp_main "$@"
+fi

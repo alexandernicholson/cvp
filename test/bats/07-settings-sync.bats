@@ -3,6 +3,20 @@
 
 load "../helpers/common"
 
+# The settings.json sync path requires python3. It's optional on the host (cvp
+# warns and skips when absent — see _cvp_settings_sync), and recent macOS no
+# longer ships python3, so skip these tests cleanly rather than failing.
+setup() {
+  CVM_DIR=$(mktemp -d); export CVM_DIR
+  CVP_CLAUDE_DIR="$CVM_DIR/claude"; export CVP_CLAUDE_DIR
+  mkdir -p "$CVP_CLAUDE_DIR"
+  local _v
+  for _v in $(compgen -e ANTHROPIC_ || true); do unset "$_v"; done
+  TEST_WORKDIR=$(mktemp -d); export TEST_WORKDIR
+  cd "$TEST_WORKDIR"
+  command -v python3 >/dev/null 2>&1 || skip "python3 not installed (settings.json sync is skipped by cvp too)"
+}
+
 settings_env() {
   [[ -f "$CVP_CLAUDE_DIR/settings.json" ]] || { echo "{}"; return; }
   python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(json.dumps(d.get("env",{})))' "$CVP_CLAUDE_DIR/settings.json"
