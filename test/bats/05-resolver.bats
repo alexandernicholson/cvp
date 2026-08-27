@@ -66,6 +66,75 @@ source_resolver_and_print() {
   assert_contains "BASE=https://a.example.com"
 }
 
+@test "resolver clears inherited variables omitted by the active profile" {
+  write_profile pantheon \
+    "ANTHROPIC_BASE_URL=https://gateway.example.com" \
+    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1" \
+    "CUSTOM_PROFILE_VAR=pantheon"
+  write_profile default "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
+  set_global_profile default
+  bash "$CVP_SCRIPT" apply >/dev/null
+
+  ANTHROPIC_BASE_URL=https://stale.example.com \
+  CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1 \
+  CUSTOM_PROFILE_VAR=stale \
+  CVM_DIR="$CVM_DIR" run bash -c '
+    source "$0/env.d/cvp.sh"
+    printf "BASE=%s|DISCOVERY=%s|CUSTOM=%s|TEAMS=%s\n" \
+      "${ANTHROPIC_BASE_URL+set}" \
+      "${CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY+set}" \
+      "${CUSTOM_PROFILE_VAR+set}" \
+      "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}"
+  ' "$CVM_DIR"
+
+  assert_success
+  [ "$output" = "BASE=|DISCOVERY=|CUSTOM=|TEAMS=1" ]
+}
+
+@test "resolver overwrites inherited variables defined by the active profile" {
+  write_profile work "CUSTOM_PROFILE_VAR=active"
+  set_global_profile work
+  bash "$CVP_SCRIPT" apply >/dev/null
+
+  CUSTOM_PROFILE_VAR=stale CVM_DIR="$CVM_DIR" run bash -c '
+    source "$0/env.d/cvp.sh"
+    printf "%s\n" "$CUSTOM_PROFILE_VAR"
+  ' "$CVM_DIR"
+
+  assert_success
+  [ "$output" = "active" ]
+}
+
+@test "resolver remembers managed variables after their profile is removed" {
+  write_profile old "DELETED_PROFILE_VAR=old"
+  write_profile default "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
+  set_global_profile default
+  bash "$CVP_SCRIPT" apply >/dev/null
+  rm -f "$CVM_DIR/profiles/old.env"
+
+  DELETED_PROFILE_VAR=stale CVM_DIR="$CVM_DIR" run bash -c '
+    source "$0/env.d/cvp.sh"
+    printf "%s\n" "${DELETED_PROFILE_VAR+set}"
+  ' "$CVM_DIR"
+
+  assert_success
+  [ -z "$output" ]
+}
+
+@test "resolver preserves inherited variables when no profile is active" {
+  write_profile old "CUSTOM_PROFILE_VAR=old"
+  bash "$CVP_SCRIPT" apply >/dev/null
+  rm -f "$CVM_DIR/active-profile"
+
+  CUSTOM_PROFILE_VAR=keep CVM_DIR="$CVM_DIR" run bash -c '
+    source "$0/env.d/cvp.sh"
+    printf "%s\n" "$CUSTOM_PROFILE_VAR"
+  ' "$CVM_DIR"
+
+  assert_success
+  [ "$output" = "keep" ]
+}
+
 @test "resolver no-ops cleanly when no profile is active" {
   bash "$CVP_SCRIPT" apply >/dev/null
   source_resolver_and_print

@@ -94,7 +94,7 @@ cvm profile use my-gateway          # instant — keys/URLs intact
 | `cvm profile show [name]` | Display a profile's vars (secrets masked) |
 | `cvm profile edit <name>` | Open a profile in `$EDITOR` (default `vi`) |
 | `cvm profile remove <name>` | Delete a profile (clears the alias if active) |
-| `cvm profile env [name]` | Print `export` lines for `eval` (real values) |
+| `cvm profile env [name]` | Print `unset`/`export` commands for `eval` (real values) |
 | `cvm profile apply` | (Re)install the `~/.cvm/env.d/cvp.sh` resolver |
 | `cvm profile help` | Show help |
 
@@ -169,7 +169,10 @@ cvp uses **two injection paths** so both the lead and teammates get the profile:
 1. **`env.d` shim** (`~/.cvm/env.d/cvp.sh`, sourced by cvm's `claude` wrapper):
    applies the **resolved** profile (`$CVM_PROFILE` → `.claude-profile` walk-up →
    global alias) to the **lead** at runtime — this is what makes per-directory
-   profiles work with no shell reload.
+   profiles work with no shell reload. Profiles are closed environments: the
+   shim unsets cvp-managed variables omitted by the resolved profile before
+   exporting its values. An append-only key ledger at
+   `~/.cvm/profiles/.env-managed` preserves cleanup after profile deletion.
 2. **`~/.claude/settings.json` `env` block**: cvp merges the **global** profile's
    vars here. Claude Code reads this at startup *"no matter how `claude` was
    launched"*, so **teammates** (separate Claude Code instances the lead spawns,
@@ -188,9 +191,9 @@ cvp uses **two injection paths** so both the lead and teammates get the profile:
 1. `cvm profile use <name>` writes the name to `~/.cvm/active-profile` and
    (re)installs the `env.d/cvp.sh` resolver. **It never touches profile data.**
 2. When you run `claude`, cvm's wrapper sources `env.d/cvp.sh`, which resolves
-   the active profile (env > `.claude-profile` walk-up > `active-profile`) and
-   `export`s that profile's variables for the current process only.
-3. `exec`s the real `claude` binary, which sees the injected environment.
+   the active profile (env > `.claude-profile` walk-up > `active-profile`),
+   unsets previously managed variables, and exports the selected profile.
+3. `exec`s the real `claude` binary, which sees the resulting environment.
 
 Because the alias is decoupled from the profile settings, switching is O(1) and
 non-destructive — this is the "global profile is an alias" design.
@@ -211,8 +214,8 @@ under `~/.cvm/profiles/` are per-machine secrets — don't commit those.)
   permissions inherited from your home dir; treat them as secrets.
 - `cvm profile show` masks values whose variable name matches
   `TOKEN|KEY|SECRET|PASSWD|PASSWORD|CREDENTIAL`.
-- `cvm profile env` prints **real** values (it's meant for `eval`) — only run it
-  when you intend to expose them to the current shell.
+- `cvm profile env` prints shell commands containing **real** values (it's meant
+  for `eval`) — only run it when you intend to modify the current shell.
 
 ## Standalone use (without cvm)
 

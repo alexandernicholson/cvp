@@ -88,6 +88,25 @@ load "../helpers/common"
   assert_contains "export ANTHROPIC_API_KEY='sk-real-123'"
 }
 
+@test "env clears inherited variables omitted by the active profile" {
+  write_profile old \
+    "ANTHROPIC_BASE_URL=https://gateway.example.com" \
+    "CUSTOM_PROFILE_VAR=old"
+  write_profile default "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
+  set_global_profile default
+  bash "$CVP_SCRIPT" apply >/dev/null
+
+  local env_out
+  env_out=$(bash "$CVP_SCRIPT" env)
+  export ANTHROPIC_BASE_URL=https://stale.example.com
+  export CUSTOM_PROFILE_VAR=stale
+  eval "$env_out"
+
+  [ -z "${ANTHROPIC_BASE_URL+set}" ]
+  [ -z "${CUSTOM_PROFILE_VAR+set}" ]
+  [ "$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" = "1" ]
+}
+
 @test "env with no active profile prints nothing and succeeds" {
   run bash "$CVP_SCRIPT" env
   assert_success
